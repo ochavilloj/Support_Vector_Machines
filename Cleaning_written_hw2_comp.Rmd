@@ -1,0 +1,614 @@
+---
+title: "Written_homework_final_draft_comp"
+author: "Jeffrey Ochavillo"
+date: "2023-05-01"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(e1071)
+library(ISLR2)
+library(tidyverse)
+library(ISLR2)
+library(tree)
+library(randomForest)
+library(dplyr)
+library(gbm)
+library(dplyr)
+library(haven)
+```
+
+```{r}
+load("/Users/jeffreyochavillo/DATA 5322/written_homework2/Housing.Rdata")
+```
+
+
+
+```{r}
+data1 <- data
+```
+
+
+```{r}
+variables <- c('OWNERSHP','INCTOT','AGE','MARST','EDUC','EDUCD','VEHICLES','BEDROOMS')
+peoplefactors <- data[,variables]
+dim(peoplefactors)
+head(peoplefactors)
+```
+
+Your task is to predict, based on factors about the people or housing itself, if a dwelling is occupied by owners or renters
+
+is housing/shelter is occupied by owners or renters
+So I need OWNERSHP, 
+
+```{r}
+#need to filter the data where it's only containing values from those who can actually rent or own a home
+#EDUCATION (7 - 11)
+#AGE be greater than 18
+
+clean_pf <- peoplefactors %>%
+  filter(AGE >= 18) %>%
+  filter(EDUC >= 7) %>%
+  filter(EDUCD >= 62)
+
+clean_pf
+
+```
+
+```{r}
+data$AGE <- zap_labels(data$AGE)
+data$AGE <- as.numeric(data$AGE)
+data$INCTOT <- zap_labels(data$INCTOT)
+data$INCTOT <- as.numeric(data$INCTOT)
+data$MARST <- zap_labels(data$MARST)
+data$MARST <- as.numeric(data$MARST)
+data$EDUC <- zap_labels(data$EDUC)
+data$EDUC <- as.numeric(data$EDUC)
+data$OWNERSHPD <- zap_labels(data$OWNERSHPD)
+data$OWNERSHPD <- as_factor(data$OWNERSHPD)
+data$OWNERSHP <- zap_labels(data$OWNERSHP)
+data$OWNERSHP <- as_factor(data$OWNERSHP)
+
+#ADD THIS
+data$EDUCD <- zap_labels(data$EDUCD)
+data$EDUCD <- as.numeric(data$EDUCD)
+data$VEHICLES <- zap_labels(data$VEHICLES)
+data$VEHICLES <- as.numeric(data$VEHICLES)
+```
+
+
+```{r}
+clean_pf$AGE <- zap_labels(clean_pf$AGE)
+clean_pf$AGE <- as.numeric(clean_pf$AGE)
+clean_pf$INCTOT <- zap_labels(clean_pf$INCTOT)
+clean_pf$INCTOT <- as.numeric(clean_pf$INCTOT)
+clean_pf$MARST <- zap_labels(clean_pf$MARST)
+clean_pf$MARST <- as.numeric(clean_pf$MARST)
+clean_pf$EDUC <- zap_labels(clean_pf$EDUC)
+clean_pf$EDUC <- as.numeric(clean_pf$EDUC)
+clean_pf$OWNERSHPD <- zap_labels(clean_pf$OWNERSHPD)
+#clean_pf$OWNERSHPD <- as_factor(clean_pf$OWNERSHPD)
+clean_pf$OWNERSHP <- zap_labels(clean_pf$OWNERSHP)
+clean_pf$OWNERSHP <- as_factor(clean_pf$OWNERSHP)
+
+#ADD THIS
+clean_pf$EDUCD <- zap_labels(clean_pf$EDUCD)
+clean_pf$EDUCD <- as.numeric(clean_pf$EDUCD)
+clean_pf$VEHICLES <- zap_labels(clean_pf$VEHICLES)
+clean_pf$VEHICLES <- as.numeric(clean_pf$VEHICLES)
+clean_pf$BEDROOMS <- zap_labels(clean_pf$BEDROOMS)
+clean_pf$BEDROOMS <- as.numeric(clean_pf$BEDROOMS)
+```
+
+```{r}
+clean_pf_categories <- clean_pf %>%
+  mutate(Education = case_when(EDUC == 7 ~ "1st Year of College",
+                               EDUC == 8 ~ "2nd Year of College",
+                               EDUC == 9 ~ "3rd Year of College",
+                               EDUC == 10 ~ "4th Year of College",
+                               EDUC == 11 ~ "5th Year of College")) %>%
+  mutate(Marital_Status = case_when(MARST == 1 | MARST == 2 ~ "Married",
+                               MARST == 3 | MARST == 4 ~ "Divorced",
+                               MARST == 5 ~ "Single",
+                               MARST == "NA" ~ "Other"))
+```
+
+
+
+one hot encoding FOR marital status
+
+```{r}
+encoded_data_marital_status <- clean_pf_categories  %>%
+  mutate(Married  = case_when(MARST == 1 | MARST == 2 ~ "1",
+                               MARST != 1 | MARST != 2 ~ "0")) %>%
+  mutate(Single  = case_when(MARST == 5 ~ "1",
+                             MARST != 5 ~ "0")) %>%
+  mutate(Divorced  = case_when(MARST == 3 | MARST == 4 ~ "1",
+                             MARST != 3 | MARST != 4 ~ "0"))
+```
+
+```{r}
+encoded_data_marital_status2 <- encoded_data_marital_status
+
+encoded_data_marital_status2 <- clean_pf_categories  %>%
+  mutate(Marital_Status = case_when(MARST == 1 | MARST == 2 ~ "Married",
+                             MARST == 3 | MARST == 4 ~ "Divorced",
+                             MARST == 5 ~ "Single",
+                             MARST == "NA" ~ "Other")) %>%
+  mutate(OWNERSHP_Rented  = case_when(OWNERSHP == 2  ~ "1",
+                               OWNERSHP != 2  ~ "0")) %>%
+  mutate(OWNERSHP_Owned  = case_when(OWNERSHP == 1 ~ "1",
+                             OWNERSHP != 1 ~ "0")) %>%
+  mutate(Fixed_Ownership  = case_when(OWNERSHP == 1 ~ "0", #so 0 means it's owned 
+                             OWNERSHP == 2 ~ "1")) %>% #so 1 means it's rented %>%
+  mutate(Married  = case_when(MARST == 1 | MARST == 2 ~ "1",
+                               MARST != 1 | MARST != 2 ~ "0")) %>%
+  mutate(Single  = case_when(MARST == 5 ~ "1",
+                             MARST != 5 ~ "0")) %>%
+  mutate(Divorced  = case_when(MARST == 3 | MARST == 4 ~ "1",
+                             MARST != 3 | MARST != 4 ~ "0")) #%>%
+
+```
+
+```{r}
+final_data <- encoded_data_marital_status2
+```
+
+```{r}
+#Filter final data 
+
+final_data <- final_data %>% 
+  select(-c(Marital_Status,EDUCD,EDUC,MARST,OWNERSHP, Education))
+
+# final_data <- final_data %>% 
+#   select(-c(Education))
+
+```
+
+```{r}
+glimpse(final_data)
+
+final_data$VEHICLES <- as.factor(final_data$VEHICLES)
+final_data$Fixed_Ownership <- as.factor(final_data$Fixed_Ownership)
+final_data$Married <- as.factor(final_data$Married)
+final_data$Single <- as.factor(final_data$Single)
+# final_data$HighSchool <- as.factor(final_data$HighSchool)
+# final_data$College <- as.factor(final_data$College)
+#final_data$Single <- as.factor(final_data$Single)
+# final_data$Add_College <- as.factor(final_data$Add_College)
+final_data$BEDROOMS <- as.factor(final_data$BEDROOMS)
+final_data$INCTOT <- as.factor(final_data$INCTOT)
+final_data$AGE <- as.factor(final_data$AGE)
+
+```
+
+```{r}
+final_data %>% drop_na()
+#dim(final_data)
+
+final_svm_draft <- final_data %>%
+  select(c(INCTOT,AGE,BEDROOMS, VEHICLES,Fixed_Ownership,Married,Single,Divorced))
+
+final_svm_draft %>% drop_na()
+  
+#Train test split
+train <- sample(1:nrow(final_svm_draft), 800)
+train.set <- final_svm_draft[train,]
+test.set <- final_svm_draft[-train,]
+```
+
+```{r}
+# p <- ggplot(final_data, aes(x=INCTOT, y=Fixed_Ownership))
+# p + geom_point(size=3) +theme(text=element_text(size=18))
+# 
+# p <- ggplot(final_data, aes(x=INCTOT, y=Fixed_Ownership))
+# p + geom_point(size=3) +theme(text=element_text(size=18))
+
+```
+
+
+Kernel = Linear 
+```{r}
+final.svm.linear <- svm(Fixed_Ownership ~., data = train.set, kernel = "linear", 
+    cost = 0.01, scale = FALSE)
+summary(final.svm.linear)
+```
+
+```{r}
+pred.train <- predict(final.svm.linear, train.set)
+cat('\nTraining Error rate is:')
+
+1 - mean(pred.train == train.set$Fixed_Ownership)
+table(predict = pred.train, truth = train.set$Fixed_Ownership)
+```
+
+Predict
+```{r}
+pred.test <- predict(final.svm.linear, test.set)
+cat('\nTesting Error rate is:')
+
+#Test err
+1 - mean(pred.test == test.set$Fixed_Ownership)
+table(predict = pred.test, truth = test.set$Fixed_Ownership)
+```
+I noticed that after randomly including Bedrooms out of pure interest, my results started to improve. 
+
+Tuning 
+```{r}
+set.seed(1)
+tune.out <- tune(svm, Fixed_Ownership ~ ., data = train.set, kernel = "linear", 
+    ranges = list(cost = c(0.01, 0.1, 1, 3, 5, 8, 10)))
+
+bestmodel <- tune.out$best.model
+summary(bestmodel)
+```
+
+Compute training and test error for new value of cost, Cost = 1
+```{r}
+final.svm.linear.tuned <- svm(Fixed_Ownership ~ ., data = train.set, kernel = "linear", 
+    cost = 1, scale = FALSE)
+
+pred.train <- predict(final.svm.linear.tuned, train.set)
+cat('\nTraining Error rate is:')
+
+1 - mean(pred.train == train.set$Fixed_Ownership)
+table(predict = pred.train, truth = train.set$Fixed_Ownership)
+
+```
+
+```{r}
+pred.test <- predict(final.svm.linear.tuned, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$Fixed_Ownership)
+table(predict = pred.test, truth = test.set$Fixed_Ownership)
+
+final.svm.linear.tuned.confm <- table(predict = pred.test, truth = test.set$Fixed_Ownership)
+
+```
+
+
+```{r}
+library(yardstick)
+library(ggplot2)
+
+
+# The confusion matrix from a single assessment set (i.e. fold)
+cm.linear <- conf_mat(final.svm.linear.tuned.confm, obs, pred)
+
+autoplot(cm.linear, type = "heatmap") +
+  scale_fill_gradient(low="#F7AD50",high = "#3F97D0") +
+  ggtitle("Confusion Matrix: Tuned Linear Kernel")
+```
+
+
+Kernel set to Radial
+
+```{r}
+final.svm.radial <- svm(Fixed_Ownership ~ ., data = train.set, kernel = "radial", 
+    cost = 0.01, scale = FALSE)
+summary(final.svm.radial)
+```
+
+Radial train/testing
+```{r}
+pred.train <- predict(final.svm.radial, train.set)
+cat('\nTrain Error Rate:')
+1 - mean(pred.train == train.set$Fixed_Ownership)
+table(predict = pred.train, truth = train.set$Fixed_Ownership)
+```
+
+```{r}
+pred.test <- predict(final.svm.radial, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$Fixed_Ownership)
+table(predict = pred.test, truth = test.set$Fixed_Ownership)
+```
+
+tuning radial 
+```{r}
+#set.seed(1)
+tune.out <- tune(svm, Fixed_Ownership ~ ., data = train.set, kernel = "radial", 
+    ranges = list(cost = c(0.01, 0.1, 10, 25, 50),
+                  gamma = c(0.5, 1, 2, 3, 4)))
+summary(tune.out)
+
+bestmodel <- tune.out$best.model
+summary(bestmodel)
+```
+
+PLUG OUR VALUES in, cost = 10, gamma = 0.5
+
+```{r}
+final.svm.radial.tuned <- svm(Fixed_Ownership ~ ., data = train.set, kernel = 'radial',
+             cost = 10, gamma = 0.5, scale = FALSE)
+
+#Predict Train
+pred.train <- predict(final.svm.radial.tuned, train.set)
+cat('\nTraining Error rate is:')
+1 - mean(pred.train == train.set$Fixed_Ownership)
+table(predict = pred.train, truth = train.set$Fixed_Ownership)
+
+#Predict Test
+pred.test <- predict(final.svm.radial.tuned, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$Fixed_Ownership)
+table(predict = pred.test, truth = test.set$Fixed_Ownership)
+
+
+final.svm.radial.tuned.confm <- table(predict = pred.test, truth = test.set$Fixed_Ownership)
+```
+
+```{r}
+library(yardstick)
+library(ggplot2)
+
+
+# The confusion matrix from a single assessment set (i.e. fold)
+cm.radial <- conf_mat(final.svm.radial.tuned.confm, obs, pred)
+
+autoplot(cm.radial, type = "heatmap") +
+  scale_fill_gradient(low="#F7AD50",high = "#3F97D0") +
+  ggtitle("Confusion Matrix: Tuned Radial Kernel")
+```
+
+
+
+
+Polynomial Kernel
+
+```{r}
+final.svm.poly <- svm(Fixed_Ownership ~ ., data = train.set, kernel = "polynomial", 
+    cost = 1, degree = 2, scale = FALSE)
+summary(final.svm.poly)
+```
+
+```{r}
+pred.train <- predict(final.svm.poly, train.set)
+cat('\nTrain Error Rate:')
+1 - mean(pred.train == train.set$Fixed_Ownership)
+table(predict = pred.train, truth = train.set$Fixed_Ownership)
+```
+
+Predict Test Set - Polynomial kernel
+```{r}
+pred.test <- predict(final.svm.poly, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$Fixed_Ownership)
+table(predict = pred.test, truth = test.set$Fixed_Ownership)
+```
+
+tuning my polynomial kernel
+```{r}
+set.seed(1)
+tune.out.poly <- tune(svm, Fixed_Ownership ~ ., data = train.set, kernel = "polynomial", 
+    ranges = list(cost = c(0.01, 0.1, 1, 10, 25),
+                  degree = c(1, 2, 3, 4, 5)))
+summary(tune.out.poly)
+
+bestmodel <- tune.out.poly$best.model
+summary(bestmodel)
+```
+
+Now fit and predict using returned parameter cost = 0.01, degree = 1
+```{r}
+final.svm.poly.tuned <- svm(Fixed_Ownership ~ ., data = train.set, kernel = 'polynomial',
+             cost = 0.01, degree = 1, scale = FALSE)
+
+#Predict Train
+pred.train <- predict(final.svm.poly.tuned, train.set)
+cat('\nTraining Error rate is:')
+1 - mean(pred.train == train.set$Fixed_Ownership)
+table(predict = pred.train, truth = train.set$Fixed_Ownership)
+
+#Predict Test
+pred.test <- predict(final.svm.poly.tuned, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$Fixed_Ownership)
+table(predict = pred.test, truth = test.set$Fixed_Ownership)
+
+
+final.svm.poly.tuned.confm <- table(predict = pred.test, truth = test.set$Fixed_Ownership)
+```
+
+Gets the confusion matrix for Poly Kernel
+```{r}
+library(yardstick)
+library(ggplot2)
+
+
+# The confusion matrix from a single assessment set (i.e. fold)
+cm.poly <- conf_mat(final.svm.poly.tuned.confm, obs, pred)
+
+autoplot(cm.poly, type = "heatmap") +
+  scale_fill_gradient(low="#F7AD50",high = "#3F97D0") +
+  ggtitle("Confusion Matrix After Tuning Poly Kernel ")
+```
+
+
+```{r}
+svm_final <- svm(Fixed_Ownership ~., data = train.set, kernel = "linear", 
+    cost = 0.01, scale = FALSE)
+summary(svm_final)
+```
+
+
+```{r}
+# #Let's take it a sample size of 5000
+# df_sample <- df[sample(nrow(final_data), 2000), ]
+# 
+# train <- sample(1:nrow(df_sample), nrow(df_sample) * 0.7)
+# train.setg <- df_sample[train,]
+# test.setg <- df_sample[-train,]
+```
+
+Compute the magnitude to get most significant variables
+
+```{r}
+# Train a linear SVM model with the final_data dataset
+
+train.setg <- train.set
+train.setg <- apply(train.setg, 2, as.numeric)
+
+
+final.svm.linear.calc <- svm(Fixed_Ownership ~ ., data = train.setg, kernel = "linear")
+
+# Get the coefficients for the linear SVM model
+svm.coef <- coef(final.svm.linear.calc)
+
+# Compute the magnitude of the coefficients
+svm.coef.abs <- abs(svm.coef)
+
+# Extract the top 3 input variables with the largest coefficient magnitudes
+top.vars <- names(sort(svm.coef.abs, decreasing = TRUE)[1:8])
+top.vars
+```
+
+
+final_svm_draft <- final_data %>%
+  select(c(INCTOT,AGE, VEHICLES,Fixed_Ownership,Married,Single,Divorced))
+
+final_svm_draft %>% drop_na()
+  
+#Train test split
+train <- sample(1:nrow(final_svm_draft), 800)
+train.set <- final_svm_draft[train,]
+test.set <- final_svm_draft[-train,]
+
+
+Produces svm plot for INCTOT and Age
+```{r}
+# split data into train and test sets
+train.setg1 <- as.data.frame(train.setg)
+
+training <- sample(1:nrow(train.setg1), size = 400)
+train.plot <- train.setg1[training, ]
+test.plot <- train.setg1[-training, ]
+
+# create radial kernel SVM model
+svm_rad_plot <- svm(Fixed_Ownership ~ INCTOT + AGE, data = train.plot, kernel = "radial")
+
+# plot SVM decision boundary
+plot(svm_rad_plot, train.plot, INCTOT~AGE,  
+     main = 'SVM Radial Kernel Plot', 
+     xlab = 'INCTOT', ylab = 'AGE',
+     width = 10, height = 10)
+
+# create grid of values for prediction
+ind_income_grid <- seq(min(train.setg1$INCTOT), max(train.setg1$INCTOT), length.out = 100)
+age_income_grid <- seq(min(train.setg1$AGE), max(train.setg1$AGE), length.out = 100)
+grid_data <- expand.grid(INCTOT = ind_income_grid, AGE = age_income_grid)
+predicted_data <- predict(svm_rad_plot, newdata = grid_data)
+
+# combine prediction with grid data
+plot_data <- cbind(grid_data, prediction = predicted_data)
+
+# create SVM plot
+# create SVM plot
+ggplot(data = plot_data, aes(x = INCTOT, y = AGE)) +
+  geom_point(aes(color = prediction)) +
+  scale_color_gradient(low = "red", high = "blue") +
+  stat_contour_filled(aes(z = as.numeric(prediction)), alpha = 0.2) +
+  labs(title = "SVM Radial Kernel Plot", x = "Individual Income", y = "Age") +
+  theme_bw() + guides(fill = FALSE) #Remove Legends 
+```
+
+Produces svm plot for INCTOT and Bedrooms
+```{r}
+# split data into train and test sets
+train.setg1 <- as.data.frame(train.setg)
+
+training <- sample(1:nrow(train.setg1), size = 400)
+train.plot <- train.setg1[training, ]
+test.plot <- train.setg1[-training, ]
+
+# create radial kernel SVM model
+svm_rad_plot <- svm(Fixed_Ownership ~ INCTOT + BEDROOMS, data = train.plot, kernel = "radial")
+
+# plot SVM decision boundary
+plot(svm_rad_plot, train.plot, INCTOT~AGE,  
+     main = 'SVM Radial Kernel Plot', 
+     xlab = 'INCTOT', ylab = 'BEDROOMS',
+     width = 10, height = 10)
+
+# create grid of values for prediction
+ind_income_grid <- seq(min(train.setg1$INCTOT), max(train.setg1$INCTOT), length.out = 100)
+bedrooms_grid <- seq(min(train.setg1$BEDROOMS), max(train.setg1$BEDROOMS), length.out = 100)
+grid_data <- expand.grid(INCTOT = ind_income_grid, BEDROOMS = bedrooms_grid)
+predicted_data <- predict(svm_rad_plot, newdata = grid_data)
+
+# combine prediction with grid data
+plot_data <- cbind(grid_data, prediction = predicted_data)
+
+# create SVM plot
+# create SVM plot
+ggplot(data = plot_data, aes(x = INCTOT, y = BEDROOMS)) +
+  geom_point(aes(color = prediction)) +
+  scale_color_gradient(low = "red", high = "blue") +
+  stat_contour_filled(aes(z = as.numeric(prediction)), alpha = 0.2) +
+  labs(title = "SVM Radial Kernel Plot", x = "Individual Income", y = "Bedrooms") +
+  theme_bw() + guides(fill = FALSE) #Remove Legends 
+```
+
+
+Produces svm plot for Bedrooms and Age
+```{r}
+
+# split data into train and test sets
+train.setg1 <- as.data.frame(train.setg)
+
+training <- sample(1:nrow(train.setg1), size = 400)
+train.plot <- train.setg1[training, ]
+test.plot <- train.setg1[-training, ]
+
+# create radial kernel SVM model
+svm_rad_plot <- svm(Fixed_Ownership ~ AGE + BEDROOMS, data = train.plot, kernel = "radial")
+
+# plot SVM decision boundary
+plot(svm_rad_plot, train.plot, AGE~BEDROOMS,  
+     main = 'SVM Radial Kernel Plot', 
+     xlab = 'AGE', ylab = 'BEDROOMS',
+     width = 10, height = 10)
+
+# create grid of values for prediction
+age_grid <- seq(min(train.setg1$AGE), max(train.setg1$AGE), length.out = 100)
+bedrooms_grid <- seq(min(train.setg1$BEDROOMS), max(train.setg1$BEDROOMS), length.out = 100)
+grid_data <- expand.grid(AGE = age_grid, BEDROOMS = bedrooms_grid)
+predicted_data <- predict(svm_rad_plot, newdata = grid_data)
+
+# combine prediction with grid data
+plot_data <- cbind(grid_data, prediction = predicted_data)
+
+# create SVM plot
+# create SVM plot
+ggplot(data = plot_data, aes(x = AGE, y = BEDROOMS)) +
+  geom_point(aes(color = prediction)) +
+  scale_color_gradient(low = "red", high = "blue") +
+  stat_contour_filled(aes(z = as.numeric(prediction)), alpha = 0.2) +
+  labs(title = "SVM Radial Kernel Plot", x = "Age", y = "Bedrooms") +
+  theme_bw() + guides(fill = FALSE) #Remove Legends 
+```
+
+
+```{r}
+ggplot(final_data, aes(x = Fixed_Ownership)) +
+  geom_bar(fill = "#F5DEB3") +
+  labs(x = "Ownership", y = "Count") +
+  ggtitle("Ownership Distribution") +
+  scale_fill_manual(values = c("owned" = "#F5DEB3", "rent" = "#F5DEB3")) +
+  theme_void() +
+  theme(plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14, angle = 90),
+        axis.text = element_text(size = 14),
+        axis.line = element_line(color = "#2E2E2E")) +
+  scale_x_discrete(labels = c("0" = "Owns", "1" = "Rents"))
+```
+
+
+
+
+
+
+
+

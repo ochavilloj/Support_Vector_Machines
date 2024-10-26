@@ -1,0 +1,745 @@
+---
+title: "Written_Homework2"
+author: "Jeffrey Ochavillo"
+date: '2023-04-26'
+output: html_document
+---
+```{r}
+library(tidyverse)
+library(e1071)
+library(ISLR2)
+library(tidyverse)
+library(ISLR2)
+library(tree)
+library(randomForest)
+library(dplyr)
+library(gbm)
+library(dplyr)
+library(haven)
+```
+
+```{r}
+
+data1 <- data
+```
+
+
+```{r}
+variables <- c('OWNERSHP','INCTOT','AGE','MARST','EDUC','EDUCD','VEHICLES', 'BEDROOMS')
+peoplefactors <- data[,variables]
+dim(peoplefactors)
+head(peoplefactors)
+```
+
+Your task is to predict, based on factors about the people or housing itself, if a dwelling is occupied by owners or renters
+
+is housing/shelter is occupied by owners or renters
+So I need OWNERSHP, 
+
+```{r}
+#need to filter the data where it's only containing values from those who can actually rent or own a home
+#EDUCATION (7 - 11)
+#AGE be greater than 18
+
+clean_pf <- peoplefactors %>%
+  filter(AGE >= 18) %>%
+  filter(EDUC >= 7) %>%
+  filter(EDUCD >= 62)
+
+clean_pf
+
+```
+
+```{r}
+data$AGE <- zap_labels(data$AGE)
+data$AGE <- as.numeric(data$AGE)
+data$INCTOT <- zap_labels(data$INCTOT)
+data$INCTOT <- as.numeric(data$INCTOT)
+data$MARST <- zap_labels(data$MARST)
+data$MARST <- as.numeric(data$MARST)
+data$EDUC <- zap_labels(data$EDUC)
+data$EDUC <- as.numeric(data$EDUC)
+data$OWNERSHPD <- zap_labels(data$OWNERSHPD)
+data$OWNERSHPD <- as_factor(data$OWNERSHPD)
+data$OWNERSHP <- zap_labels(data$OWNERSHP)
+data$OWNERSHP <- as_factor(data$OWNERSHP)
+
+#ADD THIS
+data$EDUCD <- zap_labels(data$EDUCD)
+data$EDUCD <- as.numeric(data$EDUCD)
+data$BEDROOMS <- zap_labels(data$BEDROOMS)
+data$BEDROOMS <- as.numeric(data$BEDROOMS)
+```
+
+```{r}
+clean_pf_categories <- clean_pf %>%
+  mutate(Education = case_when(EDUC == 7 ~ "1st Year of College",
+                               EDUC == 8 ~ "2nd Year of College",
+                               EDUC == 9 ~ "3rd Year of College",
+                               EDUC == 10 ~ "4th Year of College",
+                               EDUC == 11 ~ "5th Year of College")) %>%
+  mutate(Marital_Status = case_when(MARST == 1 | MARST == 2 ~ "Married",
+                               MARST == 3 | MARST == 4 ~ "Divorced",
+                               MARST == 5 ~ "Single",
+                               MARST == "NA" ~ "Other"))
+```
+
+
+
+one hot encoding FOR marital status
+
+```{r}
+encoded_data_marital_status <- clean_pf_categories  %>%
+  mutate(Married  = case_when(MARST == 1 | MARST == 2 ~ "1",
+                               MARST != 1 | MARST != 2 ~ "0")) %>%
+  mutate(Single  = case_when(MARST == 5 ~ "1",
+                             MARST != 5 ~ "0")) %>%
+  mutate(Divorced  = case_when(MARST == 3 | MARST == 4 ~ "1",
+                             MARST != 3 | MARST != 4 ~ "0"))
+```
+
+```{r}
+encoded_data_marital_status2 <- encoded_data_marital_status
+
+encoded_data_marital_status2 <- clean_pf_categories  %>%
+  mutate(Marital_Status = case_when(MARST == 1 | MARST == 2 ~ "Married",
+                             MARST == 3 | MARST == 4 ~ "Divorced",
+                             MARST == 5 ~ "Single",
+                             MARST == "NA" ~ "Other")) %>%
+  mutate(OWNERSHP_Rented  = case_when(OWNERSHP == 2  ~ "1",
+                               OWNERSHP != 2  ~ "0")) %>%
+  mutate(OWNERSHP_Owned  = case_when(OWNERSHP == 1 ~ "1",
+                             OWNERSHP != 1 ~ "0")) %>%
+  mutate(Fixed_Ownership  = case_when(OWNERSHP == 1 ~ "0", #so 0 means it's owned 
+                             OWNERSHP == 2 ~ "1")) %>% #so 1 means it's rented %>%
+  mutate(Married  = case_when(MARST == 1 | MARST == 2 ~ "1",
+                               MARST != 1 | MARST != 2 ~ "0")) %>%
+  mutate(Single  = case_when(MARST == 5 ~ "1",
+                             MARST != 5 ~ "0")) %>%
+  mutate(Divorced  = case_when(MARST == 3 | MARST == 4 ~ "1",
+                             MARST != 3 | MARST != 4 ~ "0")) #%>%
+  # mutate(HighSchool = case_when(EDUC == 62 | EDUC == 63 | EDUC == 64  ~ 1,
+  #                               EDUC != 62 | EDUC != 63 | EDUC != 64 ~ 0)) %>%
+  # mutate(College = case_when(EDUC == 70 | EDUC == 71 | EDUC == 80 | EDUC == 81 | EDUC == 82 | EDUC == 83 |
+  #                            EDUC == 90 | EDUC == 100 | EDUC == 101 ~ 1,
+  #                            EDUC != 70 | EDUC != 71 | EDUC != 80 | EDUC != 81 | EDUC != 82 | EDUC != 83 |
+  #                            EDUC != 90 | EDUC != 100 | EDUC != 101 ~ 0)) %>%
+  # mutate(Add_College = case_when(EDUC == 110 | EDUC == 111 | EDUC == 112 | EDUC == 113 | EDUC == 114 | EDUC == 115 |
+  #                            EDUC == 116 ~ 1,
+  #                            EDUC != 110 | EDUC != 111 | EDUC != 112 | EDUC != 113 | EDUC != 114 | EDUC != 115 |
+  #                            EDUC != 116 ~ 0))
+```
+
+```{r}
+final_data <- encoded_data_marital_status2
+```
+
+```{r}
+#Filter final data 
+
+final_data <- final_data %>% 
+  select(-c(Marital_Status, EDUCD,EDUC,MARST))
+
+```
+
+
+
+Your task is to predict, based on factors about the people or housing itself, if a dwelling is occupied by owners or renters
+
+```{r}
+attr(data1$OWNERSHP, 'var_desc')
+attr(data1$OWNERSHP, 'labels')
+
+```
+
+We need to use a reduced dataset that only contains the needed variables
+
+```{r}
+# create logistic regression model
+logistic_model <- glm(OWNERSHP ~ INCTOT, data=clean_pf, family=binomial)
+ 
+#Data frame with hp in ascending order
+Predicted_data <- data.frame(INCTOT=seq(
+  min(clean_pf$INCTOT), max(clean_pf$INCTOT),len=500))
+ 
+# Fill predicted values using regression model
+Predicted_data$OWNERSHP = predict(
+  logistic_model, Predicted_data, type="response")
+ 
+# Plot Predicted data and original data points
+plot(OWNERSHP ~ INCTOT, data=clean_pf)
+lines(OWNERSHP ~ INCTOT, Predicted_data, lwd=2, col="green")
+
+```
+
+```{r}
+# create logistic regression model
+logistic_model <- glm(OWNERSHP ~ AGE, data=clean_pf, family=binomial)
+ 
+#Data frame with hp in ascending order
+Predicted_data <- data.frame(AGE=seq(
+  min(clean_pf$AGE), max(clean_pf$AGE),len=500))
+ 
+# Fill predicted values using regression model
+Predicted_data$AGE = predict(
+  logistic_model, Predicted_data, type="response")
+ 
+# Plot Predicted data and original data points
+plot(OWNERSHP ~ AGE, data=clean_pf)
+lines(OWNERSHP ~ AGE, Predicted_data, lwd=2, col="green")
+
+```
+
+```{r}
+logmodel1 <- clean_pf %>%
+  mutate(log.OWNERSHIP = case_when(OWNERSHP == 1 ~ 0,
+                               OWNERSHP == 2 ~ 1))
+
+ggplot(logmodel1, aes(x=AGE, y=log.OWNERSHIP)) + geom_point() +
+      stat_smooth(method="glm", color="green", se=FALSE,
+                method.args = list(family=binomial))
+```
+```{r}
+ggplot(clean_pf, aes(x=INCTOT, y=OWNERSHP)) + geom_point() +
+      stat_smooth(method="glm", color="green", se=FALSE,
+                method.args = list(family=binomial))
+```
+
+```{r}
+
+
+ggplot(logmodel1, aes(x=INCTOT, y=log.OWNERSHIP)) + geom_point() +
+      stat_smooth(method="glm", color="green", se=FALSE,
+                method.args = list(family=binomial))
+
+```
+
+```{r}
+
+ggplot(logmodel1, aes(x=MARST, y=log.OWNERSHIP)) + geom_point() +
+      stat_smooth(method="glm", color="green", se=FALSE,
+                method.args = list(family=binomial))
+```
+
+```{r}
+
+ggplot(logmodel1, aes(x=EDUC, y=log.OWNERSHIP)) + geom_point() +
+      stat_smooth(method="glm", color="green", se=FALSE,
+                method.args = list(family=binomial))
+```
+```{r}
+set.seed(1)
+x <- matrix(rnorm(20 * 2), ncol = 2)
+y <- c(rep(-1, 10), rep(1, 10))
+x[y == 1, ] <- x[y == 1, ] + 1
+plot(x, col = (3 - y))
+```
+```{r}
+dat <- data.frame(x = x, y = as.factor(y))
+```
+
+
+```{r}
+svmfit <- svm(OWNERSHP ~ ., data = clean_pf, kernel = "linear", 
+    cost = 0.1, scale = FALSE)
+plot(svmfit, dat)
+```
+
+
+```{r}
+# model2 <-  clean_pf %>% 
+#   drop_na %>% 
+#   select(c(OWNERSHP,AGE,INCTOT)) %>% 
+#   #filter(species!='Chinstrap') %>%
+# #   droplevels() %>%
+# #   filter(abs(INCTOT -210) < 10) %>%
+# #   filter(abs(AGE-42)<3) 
+# # model2[,2:5] <- scale(model2[,2:5])
+# 
+# svm_model2 <- svm(OWNERSHP ~ . , data = model2, kernel = "linear", cost = 30, scale = FALSE)
+# plot(svm_model2, model2, OWNERSHP ~ INCTOT)
+```
+
+
+```{r}
+#data1 <- data
+svmdraft <- svm(OWNERSHP ~ . , data = train.set, kernel = "linear", cost = 30, scale = FALSE)
+summary(svmdraft)
+plot(svmdraft, train.set, is.factor(OWNERSHP) ~ is.factor(INCTOT), ordered = TRUE)
+```
+
+
+
+
+SERIAL - is an identifying number unique to each household record in a given sample. All person records are assigned the same serial number as the household record that they follow. (Person records also have their own unique identifiers - see PERNUM.) A combination of SAMPLE and SERIAL provides a unique identifier for every household in the IPUMS; the combination of SAMPLE, SERIAL, and PERNUM uniquely identifies every person in the database.\n\nFor 1850-1930, households that are part of a multi-household dwelling can be identified by using the DWELLING and DWSEQ variables
+
+DENSITY - reports the average local population density among residents of each Public Use Microdata Area (PUMA) in persons per square mile
+
+"OWNERSHP indicates whether the housing unit was rented or owned by its inhabitants
+
+"COSTELEC for 1970 reports each rented housing unit's annual electricity cost, excluding amounts included with contract rent payments. 
+
+"BUILTYR2 reports the decade in which the structure was built.
+
+"NFAMS is a constructed variable that counts the number of families within each unit.
+
+"HHINCOME reports the total money income of all household members age 15+ during the previous year. The amount should equal the sum of all household members' individual incomes, as recorded in the person-record variable INCTOT. The persons included were those present in the household at the time of the census or survey. People who lived in the household during the previous year but who were no longer present at census time are not included, and members who did not live in the household during the previous year but who had joined the household by the time of the census or survey, are included.
+
+"PERNUM numbers all persons within each household consecutively in the order in which they appear on the original census or survey form. When combined with SAMPLE and SERIAL, PERNUM uniquely identifies each person within the IPUMS.
+
+"INCTOT reports each respondent's total pre-tax personal income or losses from all sources for the previous year. The censuses collected information on income received from these sources during the previous calendar year; for the ACS and the PRCS, the reference period was the past 12 months. Amounts are expressed in contemporary dollars, and users studying change over time must adjust for inflation:\n\nUsers studying change over time must adjust for inflation.
+
+
+
+I want to clean my data where it only takes value base on people information or housing data itself
+
+```{r}
+attr(data1$MARST, 'var_desc')
+attr(data1$MARST, 'labels')
+```
+
+
+```{r}
+clean_pf %>% drop_na()
+dim(clean_pf)
+
+#Train test split
+train <- sample(1:nrow(clean_pf), 800)
+train.set <- clean_pf[train,]
+test.set <- clean_pf[-train,]
+```
+
+```{r}
+p <- ggplot(clean_pf, aes(x=INCTOT, y=OWNERSHP, color=AGE))
+p + geom_point(size=3) +theme(text=element_text(size=18))
+
+p <- ggplot(clean_pf, aes(x=INCTOT, y=OWNERSHP, color=AGE))
+p + geom_point(size=3) +theme(text=element_text(size=18))
+
+```
+
+```{r}
+svmoj <- svm(OWNERSHP ~ ., data = train.set, kernel = "linear", 
+    cost = 0.01, scale = FALSE)
+summary(svmoj)
+```
+
+```{r}
+pred.train <- predict(svmoj, train.set)
+cat('\nTraining Error rate is:')
+
+1 - mean(pred.train == train.set$OWNERSHP)
+#table(predict = pred.train, truth = train.set$INCTOT)
+```
+
+Predict
+```{r}
+pred.test <- predict(svmoj, test.set)
+cat('\nTesting Error rate is:')
+
+#Test err
+1 - mean(pred.test == test.set$OWNERSHP)
+table(predict = pred.test, truth = test.set$OWNERSHP)
+```
+
+Tuning 
+```{r}
+set.seed(1)
+tune.out <- tune(svm, OWNERSHP ~ ., data = train.set, kernel = "linear", 
+    ranges = list(cost = c(0.01, 0.1, 1, 3, 5, 8, 10)))
+
+bestmodel <- tune.out$best.model
+summary(bestmodel)
+```
+
+Compute training and test error for new value of cost
+```{r}
+svmoj <- svm(OWNERSHP ~ ., data = train.set, kernel = "linear", 
+    cost = 0.01, scale = FALSE)
+
+pred.train <- predict(svmoj, train.set)
+cat('\nTraining Error rate is:')
+
+1 - mean(pred.train == train.set$OWNERSHP)
+table(predict = pred.train, truth = train.set$OWNERSHP)
+
+```
+
+```{r}
+pred.test <- predict(svmoj, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$OWNERSHP)
+table(predict = pred.test, truth = test.set$OWNERSHP)
+
+```
+
+Let's filter the group further
+
+Data for those who own the house
+```{r}
+owner_df <- clean_pf %>%
+  filter(OWNERSHP == 1)
+
+renter_df <- clean_pf %>%
+  filter(OWNERSHP == 2)
+```
+
+
+Working on the Owner data frame
+
+clean_pf %>% drop_na()
+dim(clean_pf)
+
+#Train test split
+train <- sample(1:nrow(clean_pf), 800)
+train.set <- clean_pf[train,]
+test.set <- clean_pf[-train,]
+
+```{r}
+owner_df %>% drop_na()
+dim(owner_df)
+
+#Train test split
+train_owner <- sample(1:nrow(owner_df), 800)
+train.set.owner <- owner_df[train_owner,]
+test.set.owner <- owner_df[-train_owner,]
+```
+General EDA plots
+
+```{r}
+plot(clean_pf$INCTOT, clean_pf$OWNERSHPD)
+```
+
+
+These are my variables 
+
+variables <- c('OWNERSHP','OWNERSHPD','INCTOT','AGE','MARST','EDUC')
+
+```{r}
+attr(data1$MARST, 'var_desc')
+attr(data1$MARST, 'labels')
+```
+
+Looking at only married couples vs single vs divorced
+
+```{r}
+married <- clean_pf %>%
+  filter(MARST == 1 | MARST == 2)
+dim(married)
+single <- clean_pf %>%
+  filter(MARST == 6)
+```
+
+
+Radial SVM
+
+clean_pf %>% drop_na()
+dim(clean_pf)
+
+#Train test split
+train <- sample(1:nrow(clean_pf), 800)
+train.set <- clean_pf[train,]
+test.set <- clean_pf[-train,]
+
+
+```{r}
+train <- sample(1:nrow(clean_pf), 800)
+train.set <- clean_pf[train,]
+test.set <- clean_pf[-train,]
+``` 
+
+```{r}
+svm.radial <- svm(OWNERSHP ~ ., data = train.set, kernel = "radial", 
+    cost = 0.01, scale = FALSE)
+summary(svm.radial)
+```
+
+
+```{r}
+pred.train <- predict(svm.radial, train.set)
+cat('\nTrain Error Rate:')
+1 - mean(pred.train == train.set$OWNERSHP)
+#table(predict = pred.train, truth = train.set$OWNERSHP)
+```
+
+```{r}
+pred.test <- predict(svm.radial, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$OWNERSHP)
+table(predict = pred.test, truth = test.set$OWNERSHP)
+```
+
+tuning radial 
+```{r}
+set.seed(1)
+tune.out <- tune(svm, OWNERSHP ~ ., data = train.set, kernel = "radial", 
+    ranges = list(cost = c(0.01, 0.1, 10, 25, 50),
+                  gamma = c(0.5, 1, 2, 3, 4)))
+summary(tune.out)
+
+bestmodel <- tune.out$best.model
+summary(bestmodel)
+```
+
+PLUG OUR VALUES in
+
+```{r}
+tuned.radial.svm <- svm(OWNERSHP ~ ., data = train.set, kernel = 'radial',
+             cost = 10, gamma = 0.5, scale = FALSE)
+
+#Predict Train
+pred.train <- predict(tuned.radial.svm, train.set)
+cat('\nTraining Error rate is:')
+1 - mean(pred.train == train.set$OWNERSHP)
+#table(predict = pred.train, truth = train.set$OWNERSHP)
+
+#Predict Test
+pred.test <- predict(tuned.radial.svm, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$OWNERSHP)
+table(predict = pred.test, truth = test.set$OWNERSHP)
+```
+
+Polynomial Kernel
+
+```{r}
+svm.poly <- svm(OWNERSHP ~ ., data = train.set, kernel = "polynomial", 
+    cost = 1, degree = 2, scale = FALSE)
+summary(svm.poly)
+```
+
+```{r}
+pred.train <- predict(svm.poly, train.set)
+cat('\nTrain Error Rate:')
+1 - mean(pred.train == train.set$OWNERSHP)
+table(predict = pred.train, truth = train.set$OWNERSHP)
+```
+
+Predict Test Set - Polynomial kernel
+```{r}
+pred.test <- predict(svm.poly, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$OWNERSHP)
+table(predict = pred.test, truth = test.set$OWNERSHP)
+```
+
+tuning my polynomial kernel
+```{r}
+set.seed(1)
+tune.out.poly <- tune(svm, OWNERSHP ~ ., data = train.set, kernel = "polynomial", 
+    ranges = list(cost = c(0.01, 0.1, 1, 10, 25),
+                  degree = c(1, 2, 3, 4, 5)))
+summary(tune.out.poly)
+
+bestmodel <- tune.out.poly$best.model
+summary(bestmodel)
+```
+
+Now fit and predict using retuned parameter
+```{r}
+svm.poly.tuned <- svm(OWNERSHP ~ ., data = train.set, kernel = 'polynomial',
+             cost = 1, degree = 1, scale = FALSE)
+
+#Predict Train
+pred.train <- predict(svm.poly.tuned, train.set)
+cat('\nTraining Error rate is:')
+1 - mean(pred.train == train.set$OWNERSHP)
+table(predict = pred.train, truth = train.set$OWNERSHP)
+
+#Predict Test
+pred.test <- predict(svm.poly.tuned, test.set)
+cat('\nTesting Error rate is:')
+1 - mean(pred.test == test.set$OWNERSHP)
+table(predict = pred.test, truth = test.set$OWNERSHP)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(e1071)
+
+encoded_data_marital_status2 <- encoded_data_marital_status #%>% select(-c(Marital_Status))
+
+# Load the encoded_data_marital_status dataset
+data(encoded_data_marital_status2)
+
+# Fit an SVM model to the data
+svm_model <- svm(OWNERSHP ~ ., data = encoded_data_marital_status2, kernel = "linear")
+
+# Create a grid of values for the first two variables (marital_status_divorced and marital_status_single)
+marital_status_divorced_grid <- seq(min(encoded_data_marital_status2$Divorced), max(encoded_data_marital_status2$Divorced), length.out = 100)
+marital_status_single_grid <- seq(min(encoded_data_marital_status2$Single), max(encoded_data_marital_status2$Single), length.out = 100)
+grid <- expand.grid(marital_status_divorced = marital_status_divorced_grid, marital_status_single = marital_status_single_grid)
+
+# Predict the OWNERSHP for each point on the grid
+predictions <- predict(svm_model, newdata = grid)
+
+# Combine the grid and predictions into a data frame
+plot_data <- cbind(grid, predictions)
+names(plot_data)[1] <- "OWNERSHP"
+
+# Create the SVM plot
+ggplot(plot_data, aes(x = encoded_data_marital_status2$Divorced, y = encoded_data_marital_status2$Single, color = OWNERSHP)) +
+  geom_point(alpha = 0.2) +
+  scale_color_manual(values = c("rented" = "red", "owned" = "blue")) +
+  theme_minimal()
+
+```
+
+```{r}
+library(ggplot2)
+library(e1071)
+
+# Load the encoded_data_marital_status2 dataset
+data(encoded_data_marital_status2)
+
+# Split the data into training and testing sets
+set.seed(123)
+train_idx <- sample(nrow(encoded_data_marital_status2), 0.7 * nrow(encoded_data_marital_status2))
+train.set <- encoded_data_marital_status2[train_idx, ]
+test.set <- encoded_data_marital_status2[-train_idx, ]
+
+# Fit an SVM model to the training data
+svm_model <- svm(OWNERSHP ~ Single, data = train.set, kernel = "linear")
+
+# Make predictions on the test data
+test_predictions <- predict(svm_model, newdata = test.set)
+
+# Combine the test data and predictions into a data frame
+plot_data <- cbind(test.set, predictions = test_predictions)
+
+# Create the SVM plot
+ggplot(plot_data, aes(x = Single, y = 0, color = predictions)) +
+  geom_point(alpha = 0.2) +
+  scale_color_manual(values = c("rented" = "red", "owned" = "blue")) +
+  theme_minimal() +
+  labs(x = "Single", y = "") +
+  scale_x_continuous(breaks = c(0, 1), labels = c("No", "Yes"))
+
+```
+
+```{r}
+library(ggplot2)
+library(e1071)
+
+# Load the encoded_data_marital_status2 dataset
+data(encoded_data_marital_status2)
+
+# Fit an SVM model to the data
+svm_model <- svm(OWNERSHP ~ Single, data = encoded_data_marital_status2, kernel = "linear")
+
+# Prepare the test data
+test_data <- data.frame(Single = c("No", "Yes", "No", "No", "Yes"))
+
+# Make predictions on the test data
+predictions <- predict(svm_model, newdata = test_data)
+
+# Combine the test data and predictions into a data frame
+plot_data <- cbind(test_data, predictions = predictions)
+
+# Create the SVM plot
+ggplot(plot_data, aes(x = Single, y = 0, color = predictions)) +
+  geom_point(alpha = 0.2) +
+  scale_color_discrete(name = "OWNERSHP", labels = c("rented", "owned"), na.value = "gray") +
+  theme_minimal() +
+  labs(x = "Single", y = "") +
+  scale_x_discrete(labels = c("No", "Yes"))
+
+```
+
+
+```{r}
+
+# encoded_data_marital_status2 <- clean_pf_categories  %>%
+#   mutate(Married  = case_when(MARST == 1 | MARST == 2 ~ "1",
+#                                MARST != 1 | MARST != 2 ~ "0")) %>%
+#   mutate(Single  = case_when(MARST == 5 ~ "1",
+#                              MARST != 5 ~ "0")) %>%
+#   mutate(Divorced  = case_when(MARST == 3 | MARST == 4 ~ "1",
+#                              MARST != 3 | MARST != 4 ~ "0"))
+encoded_data_marital_status2 <- encoded_data_marital_status
+
+encoded_data_marital_status2 <- clean_pf_categories  %>%
+  mutate(Marital_Status = case_when(MARST == 1 | MARST == 2 ~ "Married",
+                             MARST == 3 | MARST == 4 ~ "Divorced",
+                             MARST == 5 ~ "Single",
+                             MARST == "NA" ~ "Other")) %>%
+  mutate(OWNERSHP_Rented  = case_when(OWNERSHP == 2  ~ "1",
+                               OWNERSHP != 2  ~ "0")) %>%
+  mutate(OWNERSHP_Owned  = case_when(OWNERSHP == 1 ~ "1",
+                             OWNERSHP != 1 ~ "0")) %>%
+  mutate(Fixed_Ownership  = case_when(OWNERSHP == 1 ~ "0", #so 0 means it's owned 
+                             OWNERSHP == 2 ~ "1")) %>% #so 1 means it's rented %>%
+  mutate(Married  = case_when(MARST == 1 | MARST == 2 ~ "1",
+                               MARST != 1 | MARST != 2 ~ "0")) %>%
+  mutate(Single  = case_when(MARST == 5 ~ "1",
+                             MARST != 5 ~ "0")) %>%
+  mutate(Divorced  = case_when(MARST == 3 | MARST == 4 ~ "1",
+                             MARST != 3 | MARST != 4 ~ "0"))
+```
+
+```{r}
+library(ggplot2)
+library(e1071)
+
+# Load the encoded_data_marital_status2 dataset
+data(encoded_data_marital_status2)
+
+# Convert Fixed_Ownership to a factor variable
+encoded_data_marital_status2$Fixed_Ownership <- factor(encoded_data_marital_status2$Fixed_Ownership, 
+                                                      levels = c(1, 2), 
+                                                      labels = c("owned", "rented"))
+
+# Fit an SVM model to the data
+svm_model <- svm(Fixed_Ownership ~ Single, data = encoded_data_marital_status2, kernel = "linear")
+
+# Prepare the test data
+test_data <- data.frame(Single = c("No", "Yes", "No", "No", "Yes"))
+
+# Make predictions on the test data
+predictions <- predict(svm_model, newdata = test_data)
+
+# Combine the test data and predictions into a data frame
+plot_data <- cbind(test_data, predictions = predictions)
+
+# Create the SVM plot
+ggplot(plot_data, aes(x = Single, y = 0, color = predictions)) +
+  geom_point(alpha = 0.2) +
+  scale_color_discrete(name = "OWNERSHP", labels = c("rented", "owned"), na.value = "gray") +
+  theme_minimal() +
+  labs(x = "Single", y = "") +
+  scale_x_discrete(labels = c("No", "Yes"))
+
+```
+
+```{r}
+library(ggplot2)
+library(e1071)
+
+# Load the encoded_data_marital_status2 dataset
+data(encoded_data_marital_status2)
+
+# Fit an SVM model to the data
+svm_model <- svm(OWNERSHP ~ Single, data = encoded_data_marital_status2, kernel = "radial")
+
+# Prepare the test data
+test_data <- data.frame(Single = c("No", "Yes", "No", "No", "Yes"))
+
+# Make predictions on the test data
+predictions <- predict(svm_model, newdata = test_data)
+
+# Combine the test data and predictions into a data frame
+plot_data <- cbind(test_data, predictions = predictions)
+
+# Create the SVM plot
+ggplot(plot_data, aes(x = Single, y = 0, color = predictions)) +
+  geom_point(alpha = 0.2) +
+  scale_color_discrete(name = "OWNERSHP", labels = c("rented", "owned"), na.value = "gray") +
+  theme_minimal() +
+  labs(x = "Single", y = "") +
+  scale_x_discrete(labels = c("No", "Yes"))
+
+```
+
+
